@@ -169,6 +169,31 @@
   .now h3 { font-family: var(--display); font-size: 19px; font-weight: 600; margin-bottom: 7px; }
   .now p { color: var(--ink-2); font-size: 15px; max-width: 70ch; }
 
+  /* ---- resume viewer ---- */
+  .viewer[hidden] { display: none; }
+  .viewer {
+    position: fixed; inset: 0; z-index: 50;
+    background: color-mix(in srgb, var(--bg) 78%, #000);
+    display: flex; flex-direction: column; align-items: center;
+    padding: 18px 16px 24px;
+  }
+  .viewer-bar {
+    width: 100%; max-width: 860px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 14px; margin-bottom: 14px;
+  }
+  .viewer-bar h2 { font-family: var(--display); font-size: 16px; font-weight: 600; color: var(--ink); margin: 0; }
+  .viewer-bar div { display: flex; gap: 8px; }
+  .viewer-doc {
+    width: 100%; max-width: 860px; flex: 1; overflow: auto;
+    background: var(--surface-2); border: 1px solid var(--line);
+    border-radius: 12px; padding: 14px; display: flex;
+    flex-direction: column; align-items: center; gap: 14px;
+  }
+  .viewer-doc canvas { width: 100%; height: auto; border-radius: 6px; box-shadow: 0 2px 10px rgba(0,0,0,.22); }
+  .viewer-note { color: var(--ink-2); font-size: 15px; padding: 28px 10px; text-align: center; }
+  .viewer-note a { color: var(--accent); }
+
   /* ---- footer ---- */
   footer { border-top: 1px solid var(--line-soft); padding: 34px 0 60px; font-size: 14.5px; color: var(--ink-3); }
   footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; }
@@ -222,7 +247,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5M4 19h16"/></svg>
         Download résumé
       </a>
-      <a class="btn" href="Bibek-Tripathy-Resume.pdf" target="_blank" rel="noopener">View résumé</a>
+      <button class="btn" type="button" data-open-resume>View résumé</button>
       <a class="btn" href="mailto:bibektripathy17@gmail.com">bibektripathy17@gmail.com</a>
       <a class="btn" href="https://linkedin.com/in/bibek-tripathy" target="_blank" rel="noopener">LinkedIn</a>
     </div>
@@ -302,11 +327,11 @@
       </article>
 
       <article class="project">
-        <h3>Commit Quarantine Gateway<span class="wip">In development</span></h3>
+        <h3>SecOps Pipeline<span class="wip">In development</span></h3>
         <p>A DevSecOps gateway that sits in the git push path: it holds incoming commits in quarantine, runs secret, dependency, SAST and IaC scanners in parallel, and releases commits upstream only once a policy engine approves them.</p>
         <div class="stack"><span>Go</span><span>Docker</span><span>Git internals</span><span>DevSecOps</span></div>
         <div class="go">
-          <a href="https://github.com/BibekTripathy" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/BibekTripathy/SecOpsPipeline" target="_blank" rel="noopener">Code</a>
         </div>
       </article>
 
@@ -392,6 +417,19 @@
   </div>
 </section>
 
+<div class="viewer" id="resume-viewer" role="dialog" aria-modal="true" aria-label="Résumé" hidden>
+  <div class="viewer-bar">
+    <h2>Bibek Tripathy — Résumé</h2>
+    <div>
+      <a class="btn" href="Bibek-Tripathy-Resume.pdf" download>Download</a>
+      <button class="btn" type="button" id="resume-close">Close</button>
+    </div>
+  </div>
+  <div class="viewer-doc" id="resume-doc" tabindex="0">
+    <p class="viewer-note">Loading résumé…</p>
+  </div>
+</div>
+
 <footer>
   <div class="wrap">
     <span>© 2026 Bibek Tripathy · Balasore, Odisha, India</span>
@@ -420,6 +458,69 @@
       try { localStorage.setItem("theme", next); } catch (e) {}
     });
   })();
+</script>
+
+<script type="module">
+  const PDF_URL = "Bibek-Tripathy-Resume.pdf";
+  const CDN = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379";
+
+  const viewer = document.getElementById("resume-viewer");
+  const doc = document.getElementById("resume-doc");
+  const closeBtn = document.getElementById("resume-close");
+  let rendered = false;
+  let lastFocus = null;
+
+  async function render() {
+    if (rendered) return;
+    rendered = true;
+    try {
+      const pdfjs = await import(`${CDN}/pdf.min.mjs`);
+      pdfjs.GlobalWorkerOptions.workerSrc = `${CDN}/pdf.worker.min.mjs`;
+      const pdf = await pdfjs.getDocument(PDF_URL).promise;
+      doc.innerHTML = "";
+      const width = Math.min(doc.clientWidth - 28, 820);
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      for (let n = 1; n <= pdf.numPages; n++) {
+        const page = await pdf.getPage(n);
+        const scale = width / page.getViewport({ scale: 1 }).width;
+        const viewport = page.getViewport({ scale: scale * dpr });
+        const canvas = document.createElement("canvas");
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        canvas.setAttribute("aria-label", `Résumé page ${n}`);
+        doc.appendChild(canvas);
+        await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+      }
+    } catch (e) {
+      rendered = false;
+      doc.innerHTML =
+        '<p class="viewer-note">The résumé could not be displayed here. ' +
+        '<a href="' + PDF_URL + '" download>Download the PDF</a> instead.</p>';
+    }
+  }
+
+  function open() {
+    lastFocus = document.activeElement;
+    viewer.hidden = false;
+    document.body.style.overflow = "hidden";
+    closeBtn.focus();
+    render();
+  }
+
+  function close() {
+    viewer.hidden = true;
+    document.body.style.overflow = "";
+    if (lastFocus) lastFocus.focus();
+  }
+
+  document.querySelectorAll("[data-open-resume]").forEach((el) =>
+    el.addEventListener("click", open)
+  );
+  closeBtn.addEventListener("click", close);
+  viewer.addEventListener("click", (e) => { if (e.target === viewer) close(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !viewer.hidden) close();
+  });
 </script>
 
 </body>
